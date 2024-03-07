@@ -1,0 +1,290 @@
+//go:build cuda
+// +build cuda
+
+package main
+
+import (
+	"encoding/hex"
+	"fmt"
+	"io/ioutil"
+	"sync"
+
+	//"time"
+
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
+
+	"bytes"
+	"log"
+
+	//"os"
+
+	"github.com/btcsuite/btcd/wire"
+	//"net/http"
+
+	"time"
+
+	"encoding/json"
+
+	"net/http"
+
+	"github.com/gorilla/websocket"
+
+	"go-atomicals/pkg/types"
+	"go-atomicals/pkg/work"
+)
+
+var (
+	updated = false
+
+	wsUrl             = "ws://144.76.71.189:29904"
+	httpUrl           = "http://144.76.71.189:29903"
+	globalParams      = types.Mint_params{}
+	number_of_workers = 0
+)
+var writeMutex sync.Mutex
+var lastPostTime = time.Now()
+var lastWorkTime = time.Now()
+
+func deal(input types.Mint_params) {
+
+	// input := Mint_params{
+	// 	Bitworkc: "123",
+
+	// 	FundingUtxoTxid:  "1514187b3fa9555c599052601c9b9de1abc632e651060b1ffae27efe6ffa4381",
+	// 	FundingUtxoIndex: uint32(0),
+	// 	FundingUtxoValue: 300,
+
+	// 	P2trOutputHex: "512077d3ccf2726c66bd334cdd9d490102c67986a17627fe310c603b0e5aec0d3fb7",
+	// 	P2trAmount:    int64(13426),
+
+	// 	FundingOutputHex: "512077d3ccf2726c66bd334cdd9d490102c67986a17627fe310c603b0e5aec0d3fb7",
+	// 	SelfAmount:       int64(716790),
+	// }
+	if number_of_workers > 1 {
+		fmt.Println("work进程过多", number_of_workers)
+		return
+	}
+
+	bitworkInfo := types.BitworkInfo{
+		Prefix: input.Bitworkc,
+	}
+
+	add := types.AdditionalParams{
+		WorkerBitworkInfoCommit: &types.BitworkInfo{
+			Prefix: input.Bitworkc,
+		},
+	}
+	add.WorkerBitworkInfoCommit.ParsePreifx()
+	bitworkInfo.ParsePreifx()
+
+	var serializedTx []byte
+	SerializedTx(input, &serializedTx)
+	//fmt.Println(serializedTx)
+
+	threads := uint32(1 * 10000 * 10000)
+
+	fmt.Println("新的work", input.Bitworkc, input.Id)
+	number_of_workers += 1
+	work.Mine(&input, &bitworkInfo, &add, serializedTx, threads)
+	number_of_workers -= 1
+
+	postWork(input)
+
+	// currentTime := time.Now()
+	// duration := currentTime.Sub(lastPostTime)
+
+	// 将结构体消息转换为 JSON 字符串
+	// jsonMessage, err := json.Marshal(input)
+	// if err != nil {
+	// 	log.Println("序列化消息失败：", err)
+	// 	return
+	// }
+
+	// writeMutex.Lock()
+	// err = conn.WriteMessage(websocket.TextMessage, jsonMessage)
+	// if err != nil {
+	// 	log.Println("发送消息失败：", err)
+	// 	return
+	// }
+	// writeMutex.Unlock()
+
+	// if input.Sequence == 0 {
+	// 	lastPostTime = time.Now()
+	// 	log.Println("遍历完seq仍未算出,重新请求")
+	// } else {
+	// 	log.Println("消息已发送到服务器：", string(jsonMessage))
+	// }
+
+}
+
+func postWork(input types.Mint_params) {
+	jsonMessage, err := json.Marshal(input)
+	if err != nil {
+		log.Println("序列化消息失败：", err)
+		return
+	}
+
+	url := httpUrl + "/postWork"
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonMessage))
+	if err != nil {
+		log.Println("发送消息失败：", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if input.Sequence == 0 {
+		lastPostTime = time.Now()
+		log.Println("遍历完seq仍未算出,重新请求")
+	} else {
+		log.Println("消息已发送到服务器：", string(jsonMessage))
+	}
+}
+
+func getParams() {
+	url := httpUrl + "/getMinerParams"
+	resp, err := http.Get(url)
+	if err != nil {
+		log.Println("发送消息失败：", err)
+		return
+	}
+
+	defer resp.Body.Close()
+
+	respBody, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("读取响应失败:", err)
+		return
+	}
+
+	// 输出响应内容
+	//fmt.Println("响应内容:", string(respBody))
+	go dealMessage(respBody)
+}
+
+func SerializedTx(input types.Mint_params, serializedTx *[]byte) {
+	msgTx := wire.NewMsgTx(wire.TxVersion)
+
+	fundingTxid, _ := chainhash.NewHashFromStr(input.FundingUtxoTxid)
+	funding_iutput := wire.NewOutPoint(fundingTxid, input.FundingUtxoIndex)
+	txIn := wire.NewTxIn(funding_iutput, nil, nil)
+	txIn.Sequence = 0
+	msgTx.AddTxIn(txIn)
+
+	p2trOutput, _ := hex.DecodeString(input.P2trOutputHex)
+	p2trOut := wire.NewTxOut(int64(input.P2trAmount), p2trOutput)
+	msgTx.AddTxOut(p2trOut)
+
+	selfOutput, _ := hex.DecodeString(input.FundingOutputHex)
+	selfOut := wire.NewTxOut(int64(input.SelfAmount), selfOutput)
+	msgTx.AddTxOut(selfOut)
+
+	buf := bytes.NewBuffer(make([]byte, 0, msgTx.SerializeSizeStripped()))
+	msgTx.SerializeNoWitness(buf)
+
+	//fmt.Println(msgTx.TxHash())
+	*serializedTx = buf.Bytes()
+}
+
+func autoGetWork() {
+	for {
+		if number_of_workers < 1 {
+			go getParams()
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func main() {
+	fmt.Println("version:", 2)
+	go autoGetWork()
+	for {
+		wsListen()
+		time.Sleep(5 * time.Second)
+	}
+
+}
+
+func dealMessage(message []byte) {
+	var input types.Mint_params
+	//fmt.Println(string(message))
+	// 解析JSON数据
+	err := json.Unmarshal(message, &input)
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+
+	// currentTime := time.Now()
+	// duration := currentTime.Sub(lastWorkTime)
+	// if input.Status == globalParams.Status && input.FundingUtxoTxid == globalParams.FundingUtxoTxid && input.FundingUtxoIndex == globalParams.FundingUtxoIndex && input.SelfAmount == globalParams.SelfAmount && input.Bitworkc == globalParams.Bitworkc && duration < 2*time.Second {
+
+	// 	//log.Println("遍历完seq仍未算出,重新请求")
+	// 	return
+	// } else {
+
+	// 	if input.Status != 0 {
+	// 		fmt.Println("status :", input.Status)
+	// 	} else {
+	// 		//fmt.Println("新的work", input.Bitworkc, input.Id)
+	// 	}
+	// }
+
+	if input.Status != 0 {
+		fmt.Println("status :", input.Status)
+	} else {
+		//fmt.Println("新的work", input.Bitworkc, input.Id)
+	}
+
+	lastWorkTime = time.Now()
+
+	//input.Status = 0
+
+	globalParams = input
+	work.Update(globalParams)
+	if input.Status != 0 {
+		return
+	}
+
+	deal(input)
+}
+
+func wsListen() {
+	// ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// defer cancel()
+
+	// conn, _, err := websocket.DefaultDialer.DialContext(ctx, wsUrl, nil)
+	conn, _, err := websocket.DefaultDialer.Dial(wsUrl, nil)
+	if err != nil {
+		fmt.Println("websocket", err.Error())
+		//go wsListen()
+		return
+	}
+	defer conn.Close()
+
+	fmt.Println("Connect ws")
+	startTime := time.Now()
+	err = conn.WriteMessage(websocket.TextMessage, []byte("Hello, server!"))
+	if err != nil {
+		fmt.Println("Failed to send message:", err.Error())
+	}
+
+	for {
+		if time.Now().Sub(startTime) > 1*time.Minute {
+			fmt.Println("Reconnect")
+			//go wsListen()
+			return
+		}
+		_, message, err := conn.ReadMessage()
+		//fmt.Println(string(message))
+		if err != nil {
+			fmt.Println("websocket", err.Error())
+			//go wsListen()
+			return
+		}
+
+		go dealMessage(message)
+		//fmt.Println(toMintBlockNumber,userNonce)
+		startTime = time.Now()
+
+	}
+}
