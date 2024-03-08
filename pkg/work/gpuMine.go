@@ -11,9 +11,9 @@ import (
 	"fmt"
 	"go-atomicals/pkg/types"
 	"log"
-	"os/exec"
-	"strconv"
-	"strings"
+
+	"github.com/mindprince/gonvml"
+
 	"time"
 )
 
@@ -38,17 +38,16 @@ func Initialize() {
 	// 	deviceNum = int(devcieNumStr[0] - '0')
 	// }
 
-	cmd := exec.Command("nvidia-smi", "--query-gpu=count", "--format=csv,noheader")
-	output, err := cmd.Output()
+	err := gonvml.Initialize()
 	if err != nil {
-		fmt.Println("执行命令出错:", err)
+		fmt.Println("初始化 NVML 失败:", err)
 		return
 	}
+	defer gonvml.Shutdown()
 
-	countStr := strings.TrimSpace(string(output))
-	count, err := strconv.Atoi(countStr)
+	count, err := gonvml.DeviceCount()
 	if err != nil {
-		fmt.Println("转换为整数出错:", err)
+		fmt.Println("获取显卡数量失败:", err)
 		return
 	}
 
