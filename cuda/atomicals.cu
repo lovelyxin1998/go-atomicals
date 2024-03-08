@@ -238,9 +238,6 @@ __global__ void kernel_sha256d_hash(WORD threads, WORD inlen, WORD target_len, c
 
 __host__ void sha256d_hash_tx(int thr_id, WORD threads, WORD inlen, WORD target_len, char prefix_parital, char ext, uint32_t start_seq, uint32_t *res_seq)
 {
-	cudaSetDevice(thr_id);
-	cudaDeviceSetCacheConfig(cudaFuncCachePreferShared);
-
 	const uint32_t threadsperblock = 1024;
 
 	dim3 grid(threads/threadsperblock);
@@ -259,6 +256,19 @@ extern "C"
 {
 
 uint32_t scanhash_sha256d(int thr_id, BYTE* in, WORD inlen, BYTE *target, WORD target_len, char prefix_parital, char ext, WORD threads, WORD start_seq, WORD *hashes_done) {
+	uint32_t res_seq = UINT32_MAX;
+
+	cudaError_t error = cudaSetDevice(thr_id);
+    if (error != cudaSuccess) {
+        printf("Failed to set CUDA device: %s\n", cudaGetErrorString(error));
+        return res_seq;
+    }
+
+	error = cudaDeviceSetCacheConfig(cudaFuncCachePreferShared);
+    if (error != cudaSuccess) {
+        printf("Failed to set cache config: %s\n", cudaGetErrorString(error));
+        return res_seq;
+    }
 
 	CUDA_SAFE_CALL(cudaMalloc(&d_resNonces[thr_id], sizeof(uint32_t)));
 	CUDA_SAFE_CALL(cudaMemset(d_resNonces[thr_id], 0xFF, sizeof(uint32_t)));
@@ -266,7 +276,6 @@ uint32_t scanhash_sha256d(int thr_id, BYTE* in, WORD inlen, BYTE *target, WORD t
 	CUDA_SAFE_CALL(cudaMemcpyToSymbol(d_target, target, target_len, 0, cudaMemcpyHostToDevice));
 
 	uint32_t seq = start_seq;
-	uint32_t res_seq = UINT32_MAX;
 	// while ((uint64_t) threads + seq <= UINT32_MAX) {
 	// 	*hashes_done = seq - start_seq + threads;
 	// 	sha256d_hash_tx(thr_id, threads, inlen, target_len, prefix_parital, ext, seq, &res_seq);
