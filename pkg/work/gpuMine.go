@@ -114,8 +114,9 @@ func mine(device_id int, input *types.Mint_params, workInfo *types.BitworkInfo, 
 	// log.Printf("开始计算 任务id: %v", input.Id)
 
 	// start := time.Now()
+	Sequence += threads * uint32(device_id)
 	for {
-		log.Printf("Sequence: %d", Sequence)
+		//log.Printf("Sequence: %d", Sequence)
 		compareResult := compareStr(input.Id, globalParams.Id)
 		if compareResult == false || input.Status != 0 {
 			break
