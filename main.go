@@ -135,6 +135,7 @@ func getParams() {
 		return
 	}
 
+	lastWorkTime = time.Now()
 	// 输出响应内容
 	//fmt.Println("响应内容:", string(respBody))
 	go dealMessage(respBody)
@@ -167,7 +168,15 @@ func SerializedTx(input types.Mint_params, serializedTx *[]byte) {
 func autoGetWork() {
 	for {
 		if atomic.LoadInt64(&number_of_workers) < 1 {
-			go getParams()
+
+			currentTime := time.Now()
+			duration := currentTime.Sub(lastWorkTime)
+
+			if duration > 200*time.Millisecond {
+				go getParams()
+				lastWorkTime = time.Now()
+			}
+
 		}
 
 		time.Sleep(100 * time.Millisecond)
@@ -219,7 +228,7 @@ func dealMessage(message []byte) {
 		//fmt.Println("新的work", input.Bitworkc, input.Id)
 	}
 
-	lastWorkTime = time.Now()
+	//lastWorkTime = time.Now()
 
 	//input.Status = 0
 	if input.Status != globalParams.Status {
