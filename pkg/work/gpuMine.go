@@ -8,9 +8,12 @@ package work
 //#cgo LDFLAGS: -L. -L../../cuda -lhash
 import "C"
 import (
+	"fmt"
 	"go-atomicals/pkg/types"
 	"log"
-	"os"
+	"os/exec"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -30,10 +33,27 @@ var deviceNum int
 
 func Initialize() {
 	deviceNum = 1
-	devcieNumStr := os.Getenv("CUDA_DEVICE_NUM")
-	if devcieNumStr != "" {
-		deviceNum = int(devcieNumStr[0] - '0')
+	// devcieNumStr := os.Getenv("CUDA_DEVICE_NUM")
+	// if devcieNumStr != "" {
+	// 	deviceNum = int(devcieNumStr[0] - '0')
+	// }
+
+	cmd := exec.Command("nvidia-smi", "--query-gpu=count", "--format=csv,noheader")
+	output, err := cmd.Output()
+	if err != nil {
+		fmt.Println("执行命令出错:", err)
+		return
 	}
+
+	countStr := strings.TrimSpace(string(output))
+	count, err := strconv.Atoi(countStr)
+	if err != nil {
+		fmt.Println("转换为整数出错:", err)
+		return
+	}
+
+	deviceNum = int(count)
+
 	log.Printf("deviceNum: %v", deviceNum)
 }
 
