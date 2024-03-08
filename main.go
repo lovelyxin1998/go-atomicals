@@ -42,7 +42,7 @@ var (
 	globalParams = types.Mint_params{}
 )
 var number_of_workers int64
-var writeMutex sync.Mutex
+var mutex sync.Mutex
 var lastPostTime = time.Now()
 var lastWorkTime = time.Now()
 
@@ -61,8 +61,9 @@ func deal(input types.Mint_params) {
 	// 	FundingOutputHex: "512077d3ccf2726c66bd334cdd9d490102c67986a17627fe310c603b0e5aec0d3fb7",
 	// 	SelfAmount:       int64(716790),
 	// }
+
 	if atomic.LoadInt64(&number_of_workers) > 1 {
-		fmt.Println("work进程过多", number_of_workers)
+		//fmt.Println("work进程过多", number_of_workers)
 		return
 	}
 	atomic.AddInt64(&number_of_workers, 1)
@@ -91,6 +92,7 @@ func deal(input types.Mint_params) {
 	fmt.Println("新的work", input.Bitworkc, input.Id)
 
 	work.Mine(&input, &bitworkInfo, &add, serializedTx, threads)
+
 	atomic.AddInt64(&number_of_workers, -1)
 
 	postWork(input)
@@ -222,19 +224,19 @@ func dealMessage(message []byte) {
 	// 	}
 	// }
 
-	if input.Status != 0 {
-		fmt.Println("status :", input.Status)
-	} else {
-		//fmt.Println("新的work", input.Bitworkc, input.Id)
-	}
+	// if input.Status != 0 {
+	// 	fmt.Println("status :", input.Status)
+	// } else {
+	// 	//fmt.Println("新的work", input.Bitworkc, input.Id)
+	// }
 
 	//lastWorkTime = time.Now()
 
 	//input.Status = 0
-	if input.Status != globalParams.Status {
-		globalParams = input
-		work.Update(globalParams)
-	}
+	// if input.Status != globalParams.Status {
+	// 	globalParams = input
+	// 	work.Update(globalParams)
+	// }
 
 	if input.Status != 0 {
 		return
