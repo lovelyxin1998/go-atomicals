@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"sync"
+	"sync/atomic"
 
 	//"time"
 
@@ -36,11 +37,11 @@ import (
 var (
 	updated = false
 
-	wsUrl             = "ws://144.76.71.189:29904"
-	httpUrl           = "http://144.76.71.189:29903"
-	globalParams      = types.Mint_params{}
-	number_of_workers = 0
+	wsUrl        = "ws://144.76.71.189:29904"
+	httpUrl      = "http://144.76.71.189:29903"
+	globalParams = types.Mint_params{}
 )
+var number_of_workers int64
 var writeMutex sync.Mutex
 var lastPostTime = time.Now()
 var lastWorkTime = time.Now()
@@ -60,7 +61,7 @@ func deal(input types.Mint_params) {
 	// 	FundingOutputHex: "512077d3ccf2726c66bd334cdd9d490102c67986a17627fe310c603b0e5aec0d3fb7",
 	// 	SelfAmount:       int64(716790),
 	// }
-	if number_of_workers > 1 {
+	if atomic.LoadInt64(&number_of_workers) > 1 {
 		fmt.Println("work进程过多", number_of_workers)
 		return
 	}
@@ -84,37 +85,12 @@ func deal(input types.Mint_params) {
 	threads := uint32(1 * 10000 * 10000)
 
 	fmt.Println("新的work", input.Bitworkc, input.Id)
-	number_of_workers += 1
+
+	atomic.AddInt64(&number_of_workers, 1)
 	work.Mine(&input, &bitworkInfo, &add, serializedTx, threads)
-	number_of_workers -= 1
+	atomic.AddInt64(&number_of_workers, -1)
 
 	postWork(input)
-
-	// currentTime := time.Now()
-	// duration := currentTime.Sub(lastPostTime)
-
-	// 将结构体消息转换为 JSON 字符串
-	// jsonMessage, err := json.Marshal(input)
-	// if err != nil {
-	// 	log.Println("序列化消息失败：", err)
-	// 	return
-	// }
-
-	// writeMutex.Lock()
-	// err = conn.WriteMessage(websocket.TextMessage, jsonMessage)
-	// if err != nil {
-	// 	log.Println("发送消息失败：", err)
-	// 	return
-	// }
-	// writeMutex.Unlock()
-
-	// if input.Sequence == 0 {
-	// 	lastPostTime = time.Now()
-	// 	log.Println("遍历完seq仍未算出,重新请求")
-	// } else {
-	// 	log.Println("消息已发送到服务器：", string(jsonMessage))
-	// }
-
 }
 
 func postWork(input types.Mint_params) {
@@ -187,10 +163,14 @@ func SerializedTx(input types.Mint_params, serializedTx *[]byte) {
 
 func autoGetWork() {
 	for {
-		if number_of_workers < 1 {
+		if atomic.LoadInt64(&number_of_workers) < 1 {
 			go getParams()
 		}
+
 		time.Sleep(100 * time.Millisecond)
+		if globalParams.Status != 0 {
+			time.Sleep(50 * time.Second)
+		}
 	}
 }
 
