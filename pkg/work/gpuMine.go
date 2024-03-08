@@ -104,7 +104,7 @@ func mine(device_id int, input *types.Mint_params, workInfo *types.BitworkInfo, 
 	// log.Printf("开始计算 任务id: %v", input.Id)
 
 	// start := time.Now()
-	for {
+	for int64(Sequence) < MAX_SEQUENCE {
 
 		compareResult := compareStr(input.Id, globalParams.Id)
 		if compareResult == false || input.Status != 0 {
