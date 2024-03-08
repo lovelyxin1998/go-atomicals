@@ -10,7 +10,7 @@ import "C"
 import (
 	"go-atomicals/pkg/types"
 	"log"
-	"math/big"
+	"os"
 	"time"
 )
 
@@ -26,15 +26,46 @@ func compareStr(str1 string, str2 string) bool {
 	return res
 }
 
-// func mine(input *Mint_params,workInfo *BitworkInfo,serializedTx []byte, threads uint32, result chan<- Mint_params) {
+var deviceNum int
+
+func Initialize() {
+	deviceNum = 1
+	devcieNumStr := os.Getenv("CUDA_DEVICE_NUM")
+	if devcieNumStr != "" {
+		deviceNum = int(devcieNumStr[0] - '0')
+	}
+	log.Printf("deviceNum: %v", deviceNum)
+}
+
 func Mine(input *types.Mint_params, workInfo *types.BitworkInfo, add *types.AdditionalParams, serializedTx []byte, threads uint32) {
+
+	result := make(chan int64)
+
+	log.Printf("开始计算 任务id: %v", input.Id)
+	start := time.Now()
+
+	var res = int64(0)
+	for i := 0; i < deviceNum; i++ {
+		go mine(i, input, workInfo, add, serializedTx, threads, &res, result)
+	}
+
+	for i := 0; i < deviceNum; i++ {
+		<-result
+	}
+
+	input.Sequence = res
+	log.Printf("结束计算 任务id: %v,计算时间：%d s", input.Id, int64(time.Since(start).Seconds()))
+}
+
+// func mine(input *Mint_params,workInfo *BitworkInfo,serializedTx []byte, threads uint32, result chan<- Mint_params) {
+func mine(device_id int, input *types.Mint_params, workInfo *types.BitworkInfo, add *types.AdditionalParams, serializedTx []byte, threads uint32, res *int64, result chan<- int64) {
 
 	hashesDone := C.uint(0)
 	var (
 		pp       = -1
 		ext      = -1
 		Sequence = uint32(0)
-		res      = int64(0)
+		//res      = int64(0)
 	)
 	//log.Printf(string(workInfo.PrefixBytes), len(workInfo.PrefixBytes))
 
@@ -45,15 +76,15 @@ func Mine(input *types.Mint_params, workInfo *types.BitworkInfo, add *types.Addi
 		ext = int(add.WorkerBitworkInfoCommit.Ext)
 	}
 
-	num := new(big.Int)
-	num.SetString(input.Id, 16)
-	result := new(big.Int)
-	result.Mod(num, big.NewInt(20))
+	// num := new(big.Int)
+	// num.SetString(input.Id, 16)
+	// result := new(big.Int)
+	// result.Mod(num, big.NewInt(20))
 
-	device_id := int(result.Int64())
-	log.Printf("开始计算 任务id: %v", input.Id)
+	// device_id := int(result.Int64())
+	// log.Printf("开始计算 任务id: %v", input.Id)
 
-	start := time.Now()
+	// start := time.Now()
 	for {
 
 		compareResult := compareStr(input.Id, globalParams.Id)
@@ -73,16 +104,24 @@ func Mine(input *types.Mint_params, workInfo *types.BitworkInfo, add *types.Addi
 			C.uint(Sequence),
 			&hashesDone,
 		)
-		if int64(seq) != MAX_SEQUENCE {
-			res = int64(seq)
+
+		if *res != 0 && *res != MAX_SEQUENCE {
 			break
 		}
-		Sequence += threads
+
+		_res := int64(seq)
+		if _res != MAX_SEQUENCE {
+			res = &_res
+			break
+		}
+
+		Sequence += threads * uint32(deviceNum)
 	}
+	result <- 1
 	//log.Printf("结束计算 hashrate: %d/s", int64(float64(threads)/time.Since(start).Seconds()))
 	//fmt.Println("结束计算 device_id", device_id)
-	log.Printf("结束计算 任务id: %v,计算时间：%d s", input.Id, int64(time.Since(start).Seconds()))
+	//log.Printf("结束计算 任务id: %v,计算时间：%d s", input.Id, int64(time.Since(start).Seconds()))
 
-	input.Sequence = res
+	//input.Sequence = res
 	//result <- input
 }
