@@ -72,8 +72,18 @@ func Mine(input *types.Mint_params, workInfo *types.BitworkInfo, add *types.Addi
 		<-result
 	}
 
+	if res == MAX_SEQUENCE {
+		res = int64(0)
+	}
+
 	input.Sequence = res
 	log.Printf("结束计算 任务id: %v,计算时间：%d s", input.Id, int64(time.Since(start).Seconds()))
+}
+
+func isUint32Overflow(a, b uint32) bool {
+	sum := a + b
+	// 溢出发生当且仅当相加结果小于任一操作数
+	return sum < a || sum < b
 }
 
 // func mine(input *Mint_params,workInfo *BitworkInfo,serializedTx []byte, threads uint32, result chan<- Mint_params) {
@@ -104,8 +114,8 @@ func mine(device_id int, input *types.Mint_params, workInfo *types.BitworkInfo, 
 	// log.Printf("开始计算 任务id: %v", input.Id)
 
 	// start := time.Now()
-	for int64(Sequence) < MAX_SEQUENCE {
-
+	for {
+		log.Printf("Sequence: %d", Sequence)
 		compareResult := compareStr(input.Id, globalParams.Id)
 		if compareResult == false || input.Status != 0 {
 			break
@@ -124,7 +134,7 @@ func mine(device_id int, input *types.Mint_params, workInfo *types.BitworkInfo, 
 			&hashesDone,
 		)
 
-		if *res != 0 && *res != MAX_SEQUENCE {
+		if *res != 0 {
 			break
 		}
 
@@ -133,7 +143,13 @@ func mine(device_id int, input *types.Mint_params, workInfo *types.BitworkInfo, 
 			break
 		}
 
+		if isUint32Overflow(Sequence, threads*uint32(deviceNum)) {
+			*res = MAX_SEQUENCE
+			break
+		}
+
 		Sequence += threads * uint32(deviceNum)
+
 	}
 	result <- 1
 	//log.Printf("结束计算 hashrate: %d/s", int64(float64(threads)/time.Since(start).Seconds()))
