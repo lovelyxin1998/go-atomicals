@@ -65,6 +65,7 @@ func deal(input types.Mint_params) {
 		fmt.Println("work进程过多", number_of_workers)
 		return
 	}
+	atomic.AddInt64(&number_of_workers, 1)
 
 	bitworkInfo := types.BitworkInfo{
 		Prefix: input.Bitworkc,
@@ -82,11 +83,10 @@ func deal(input types.Mint_params) {
 	SerializedTx(input, &serializedTx)
 	//fmt.Println(serializedTx)
 
-	threads := uint32(1 * 10000 * 10000)
+	threads := uint32(5000 * 10000)
 
 	fmt.Println("新的work", input.Bitworkc, input.Id)
 
-	atomic.AddInt64(&number_of_workers, 1)
 	work.Mine(&input, &bitworkInfo, &add, serializedTx, threads)
 	atomic.AddInt64(&number_of_workers, -1)
 
