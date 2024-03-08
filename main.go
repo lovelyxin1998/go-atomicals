@@ -176,6 +176,7 @@ func autoGetWork() {
 
 func main() {
 	fmt.Println("version:", 2)
+	work.Initialize()
 	go autoGetWork()
 	for {
 		wsListen()
