@@ -67,6 +67,9 @@ func deal(input types.Mint_params) {
 	}
 	atomic.AddInt64(&number_of_workers, 1)
 
+	globalParams = input
+	work.Update(globalParams)
+
 	bitworkInfo := types.BitworkInfo{
 		Prefix: input.Bitworkc,
 	}
@@ -219,9 +222,11 @@ func dealMessage(message []byte) {
 	lastWorkTime = time.Now()
 
 	//input.Status = 0
+	if input.Status != globalParams.Status {
+		globalParams = input
+		work.Update(globalParams)
+	}
 
-	globalParams = input
-	work.Update(globalParams)
 	if input.Status != 0 {
 		return
 	}
