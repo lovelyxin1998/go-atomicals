@@ -238,6 +238,9 @@ __global__ void kernel_sha256d_hash(WORD threads, WORD inlen, WORD target_len, c
 
 __host__ void sha256d_hash_tx(int thr_id, WORD threads, WORD inlen, WORD target_len, char prefix_parital, char ext, uint32_t start_seq, uint32_t *res_seq)
 {
+	cudaSetDevice(thr_id);
+	cudaDeviceSetCacheConfig(cudaFuncCachePreferShared);
+
 	const uint32_t threadsperblock = 1024;
 
 	dim3 grid(threads/threadsperblock);
