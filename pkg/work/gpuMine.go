@@ -109,9 +109,8 @@ func mine(device_id int, input *types.Mint_params, workInfo *types.BitworkInfo, 
 			break
 		}
 
-		_res := int64(seq)
-		if _res != MAX_SEQUENCE {
-			res = &_res
+		if int64(seq) != MAX_SEQUENCE {
+			*res = int64(seq)
 			break
 		}
 
