@@ -62,10 +62,6 @@ func deal(input types.Mint_params) {
 	// 	SelfAmount:       int64(716790),
 	// }
 
-	if atomic.LoadInt64(&number_of_workers) > 1 {
-		//fmt.Println("work进程过多", number_of_workers)
-		return
-	}
 	atomic.AddInt64(&number_of_workers, 1)
 
 	globalParams = input
@@ -87,15 +83,24 @@ func deal(input types.Mint_params) {
 	SerializedTx(input, &serializedTx)
 	//fmt.Println(serializedTx)
 
-	threads := uint32(5000 * 10000)
+	threads := uint32(1 * 10000 * 10000)
 
-	fmt.Println("新的work", input.Bitworkc, input.Id)
+	if input.Status == 0 {
+		fmt.Println("新的work", input.Bitworkc, input.Id)
 
-	work.Mine(&input, &bitworkInfo, &add, serializedTx, threads)
+		work.Mine(&input, &bitworkInfo, &add, serializedTx, threads)
+	} else {
+		log.Println("无任务，睡眠")
+		time.Sleep(60 * time.Second)
+	}
 
 	atomic.AddInt64(&number_of_workers, -1)
 
-	postWork(input)
+	if input.Sequence != 0 {
+		postWork(input)
+	} else if input.Status == 0 {
+		log.Println("遍历完seq仍未算出,重新请求")
+	}
 }
 
 func postWork(input types.Mint_params) {
@@ -209,36 +214,15 @@ func dealMessage(message []byte) {
 		return
 	}
 
-	// currentTime := time.Now()
-	// duration := currentTime.Sub(lastWorkTime)
-	// if input.Status == globalParams.Status && input.FundingUtxoTxid == globalParams.FundingUtxoTxid && input.FundingUtxoIndex == globalParams.FundingUtxoIndex && input.SelfAmount == globalParams.SelfAmount && input.Bitworkc == globalParams.Bitworkc && duration < 2*time.Second {
+	if input.FundingUtxoTxid != globalParams.FundingUtxoTxid || input.FundingUtxoIndex != globalParams.FundingUtxoIndex || input.Bitworkc != globalParams.Bitworkc {
 
-	// 	//log.Println("遍历完seq仍未算出,重新请求")
-	// 	return
-	// } else {
+		//log.Println("遍历完seq仍未算出,重新请求")
+		go deal(input)
+		return
+	}
 
-	// 	if input.Status != 0 {
-	// 		fmt.Println("status :", input.Status)
-	// 	} else {
-	// 		//fmt.Println("新的work", input.Bitworkc, input.Id)
-	// 	}
-	// }
-
-	// if input.Status != 0 {
-	// 	fmt.Println("status :", input.Status)
-	// } else {
-	// 	//fmt.Println("新的work", input.Bitworkc, input.Id)
-	// }
-
-	//lastWorkTime = time.Now()
-
-	//input.Status = 0
-	// if input.Status != globalParams.Status {
-	// 	globalParams = input
-	// 	work.Update(globalParams)
-	// }
-
-	if input.Status != 0 {
+	if atomic.LoadInt64(&number_of_workers) >= 1 {
+		//fmt.Println("work进程过多", number_of_workers)
 		return
 	}
 
